@@ -1,68 +1,55 @@
 blueprint:
   name: Bilresa Dual Button - Area Lights
   description: >
-    Controls the lights in an area using a Bilresa dual button.
-
-    Button 1 single press toggles the area lights.
-    Button 2 cycles brightness between 5%, 20%, 40% and 100%.
-    Button 1 double press sets the area lights to 100%.
-    Button 1 long press activates a selected reset scene.
+    Controls lights in an area using a Bilresa dual button.
+    Button 1 single press toggles the lights.
+    Button 2 cycles brightness: 5%, 20%, 40%, 100%.
+    Button 1 double press sets the lights to 100%.
+    Button 1 long press activates a reset scene.
   domain: automation
 
   input:
     room_area:
       name: Room Area
-      description: >
-        The area containing the lights controlled by this automation.
+      description: Area containing the lights to control.
       selector:
         area: {}
 
     button_1_position:
       name: Button 1 Position Sensor
-      description: >
-        Sensor representing the current position of button 1.
       selector:
         entity:
           domain: sensor
 
     button_2_position:
       name: Button 2 Position Sensor
-      description: >
-        Sensor representing the current position of button 2.
       selector:
         entity:
           domain: sensor
 
     button_1_event:
       name: Button 1 Event
-      description: >
-        Bilresa button 1 event entity.
       selector:
         entity:
           domain: event
 
     reset_scene:
       name: Reset Scene
-      description: >
-        Scene activated by a long press of button 1.
       selector:
         entity:
           domain: scene
 
 triggers:
-  # Button 1 - single press
   - trigger: numeric_state
     entity_id: !input button_1_position
     above: 0
     id: toggle
 
-  # Button 2 - single press
   - trigger: numeric_state
     entity_id: !input button_2_position
     above: 0
     id: brightness
 
-  # Button 1 - double press
   - trigger: event.received
     target:
       entity_id: !input button_1_event
@@ -71,7 +58,6 @@ triggers:
         - multi_press_2
     id: full_brightness
 
-  # Button 1 - long press
   - trigger: event.received
     target:
       entity_id: !input button_1_event
@@ -85,9 +71,7 @@ conditions: []
 actions:
   - choose:
 
-      # ==========================================
-      # BUTTON 1 - TOGGLE
-      # ==========================================
+      # Button 1 - toggle
       - conditions:
           - condition: trigger
             id: toggle
@@ -98,14 +82,11 @@ actions:
             data:
               transition: 0.4
 
-      # ==========================================
-      # BUTTON 2 - BRIGHTNESS CYCLE
-      # ==========================================
+      # Button 2 - brightness cycle
       - conditions:
           - condition: trigger
             id: brightness
         sequence:
-
           - variables:
               selected_area: !input room_area
 
@@ -114,28 +95,18 @@ actions:
                 {% set lights = area_entities(selected_area)
                   | select('match', '^light\.')
                   | list %}
-
-                {% set brightness_values = namespace(values=[]) %}
-
-                {% for light in lights %}
-                  {% set brightness = state_attr(light, 'brightness') %}
-                  {% if brightness is not none %}
-                    {% set brightness_values.values =
-                      brightness_values.values + [brightness | int(0)] %}
+                {% set ns = namespace(max=0) %}
+                {% for entity in lights %}
+                  {% set brightness = state_attr(entity, 'brightness') %}
+                  {% if brightness is not none and brightness > ns.max %}
+                    {% set ns.max = brightness %}
                   {% endif %}
                 {% endfor %}
-
-                {% if brightness_values.values %}
-                  {{ brightness_values.values | max }}
-                {% else %}
-                  0
-                {% endif %}
+                {{ ns.max }}
 
           - choose:
 
-              # ------------------------------------------
-              # 5% / OFF -> 20%
-              # ------------------------------------------
+              # 5% / off -> 20%
               - conditions:
                   - condition: template
                     value_template: >
@@ -148,9 +119,7 @@ actions:
                       brightness_pct: 20
                       transition: 0.4
 
-              # ------------------------------------------
               # 20% -> 40%
-              # ------------------------------------------
               - conditions:
                   - condition: template
                     value_template: >
@@ -163,9 +132,7 @@ actions:
                       brightness_pct: 40
                       transition: 0.4
 
-              # ------------------------------------------
               # 40% -> 100%
-              # ------------------------------------------
               - conditions:
                   - condition: template
                     value_template: >
@@ -178,9 +145,7 @@ actions:
                       brightness_pct: 100
                       transition: 0.4
 
-            # ------------------------------------------
             # 100% -> 5%
-            # ------------------------------------------
             default:
               - action: light.turn_on
                 target:
@@ -189,9 +154,7 @@ actions:
                   brightness_pct: 5
                   transition: 0.4
 
-      # ==========================================
-      # BUTTON 1 - DOUBLE PRESS
-      # ==========================================
+      # Button 1 - double press
       - conditions:
           - condition: trigger
             id: full_brightness
@@ -203,9 +166,7 @@ actions:
               brightness_pct: 100
               transition: 0.4
 
-      # ==========================================
-      # BUTTON 1 - LONG PRESS
-      # ==========================================
+      # Button 1 - long press
       - conditions:
           - condition: trigger
             id: reset_lights
