@@ -1,0 +1,237 @@
+blueprint:
+  name: Bilresa Dual Button - Area Lights
+  description: >
+    Controls lights in an area using one or more Bilresa buttons.
+
+    Toggle buttons toggle the area lights.
+    Brightness buttons cycle brightness: 5%, 20%, 40%, 100%.
+    Full brightness buttons set the area lights to 100% on double press.
+    Reset buttons optionally activate a reset scene on long press.
+
+    Multiple buttons can be selected for each function.
+  domain: automation
+
+  input:
+    room_area:
+      name: Room Area
+      description: Area containing the lights to control.
+      selector:
+        area: {}
+
+    toggle_buttons:
+      name: Toggle Button Position Sensors
+      description: >
+        Select all button position sensors that should toggle the lights.
+        Multiple sensors can be selected.
+      selector:
+        entity:
+          domain: sensor
+          multiple: true
+
+    brightness_buttons:
+      name: Brightness Button Position Sensors
+      description: >
+        Select all button position sensors that should cycle brightness.
+        Multiple sensors can be selected.
+      selector:
+        entity:
+          domain: sensor
+          multiple: true
+
+    full_brightness_buttons:
+      name: Full Brightness Button Events
+      description: >
+        Select all button event entities that should set the lights to
+        100% when double pressed.
+        Multiple event entities can be selected.
+      selector:
+        entity:
+          domain: event
+          multiple: true
+
+    reset_buttons:
+      name: Reset Button Events
+      description: >
+        Select all button event entities that should activate the reset
+        scene when long pressed.
+        Multiple event entities can be selected.
+      selector:
+        entity:
+          domain: event
+          multiple: true
+
+    reset_scene:
+      name: Reset Scene
+      description: Optional scene activated by a long press.
+      default:
+      selector:
+        entity:
+          domain: scene
+
+triggers:
+
+  # ==========================================
+  # TOGGLE BUTTONS
+  # ==========================================
+  - trigger: numeric_state
+    entity_id: !input toggle_buttons
+    above: 0
+    id: toggle
+
+  # ==========================================
+  # BRIGHTNESS BUTTONS
+  # ==========================================
+  - trigger: numeric_state
+    entity_id: !input brightness_buttons
+    above: 0
+    id: brightness
+
+  # ==========================================
+  # FULL BRIGHTNESS - DOUBLE PRESS
+  # ==========================================
+  - trigger: event.received
+    target:
+      entity_id: !input full_brightness_buttons
+    options:
+      event_type:
+        - multi_press_2
+    id: full_brightness
+
+  # ==========================================
+  # RESET - LONG PRESS
+  # ==========================================
+  - trigger: event.received
+    target:
+      entity_id: !input reset_buttons
+    options:
+      event_type:
+        - long_press
+    id: reset_lights
+
+conditions: []
+
+actions:
+  - choose:
+
+      # ==========================================
+      # TOGGLE
+      # ==========================================
+      - conditions:
+          - condition: trigger
+            id: toggle
+        sequence:
+          - action: light.toggle
+            target:
+              area_id: !input room_area
+            data:
+              transition: 0.4
+
+      # ==========================================
+      # BRIGHTNESS CYCLE
+      # ==========================================
+      - conditions:
+          - condition: trigger
+            id: brightness
+        sequence:
+
+          - variables:
+              selected_area: !input room_area
+
+          - variables:
+              max_brightness: >
+                {% set lights = area_entities(selected_area)
+                  | select('match', '^light\.')
+                  | list %}
+                {% set ns = namespace(max=0) %}
+                {% for entity in lights %}
+                  {% set brightness = state_attr(entity, 'brightness') %}
+                  {% if brightness is not none and brightness > ns.max %}
+                    {% set ns.max = brightness %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.max }}
+
+          - choose:
+
+              # 5% / OFF -> 20%
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ (max_brightness | int(0) / 255 * 100) <= 15 }}
+                sequence:
+                  - action: light.turn_on
+                    target:
+                      area_id: !input room_area
+                    data:
+                      brightness_pct: 20
+                      transition: 0.4
+
+              # 20% -> 40%
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ (max_brightness | int(0) / 255 * 100) <= 35 }}
+                sequence:
+                  - action: light.turn_on
+                    target:
+                      area_id: !input room_area
+                    data:
+                      brightness_pct: 40
+                      transition: 0.4
+
+              # 40% -> 100%
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ (max_brightness | int(0) / 255 * 100) <= 80 }}
+                sequence:
+                  - action: light.turn_on
+                    target:
+                      area_id: !input room_area
+                    data:
+                      brightness_pct: 100
+                      transition: 0.4
+
+            # 100% -> 5%
+            default:
+              - action: light.turn_on
+                target:
+                  area_id: !input room_area
+                data:
+                  brightness_pct: 5
+                  transition: 0.4
+
+      # ==========================================
+      # DOUBLE PRESS -> 100%
+      # ==========================================
+      - conditions:
+          - condition: trigger
+            id: full_brightness
+        sequence:
+          - action: light.turn_on
+            target:
+              area_id: !input room_area
+            data:
+              brightness_pct: 100
+              transition: 0.4
+
+      # ==========================================
+      # LONG PRESS -> RESET SCENE
+      # ==========================================
+      - conditions:
+          - condition: trigger
+            id: reset_lights
+        sequence:
+          - variables:
+              selected_reset_scene: !input reset_scene
+
+          - condition: template
+            value_template: "{{ selected_reset_scene | length > 0 }}"
+
+          - action: scene.turn_on
+            target:
+              entity_id: "{{ selected_reset_scene }}"
+            data:
+              transition: 0.4
+
+mode: queued
