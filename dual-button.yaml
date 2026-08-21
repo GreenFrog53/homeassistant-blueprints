@@ -34,10 +34,12 @@ blueprint:
           domain: event
 
     reset_scene:
-      name: Reset Scene
-      selector:
+    name: Reset Scene
+    description: Optional scene activated by a long press.
+    default:
+    selector:
         entity:
-          domain: scene
+        domain: scene
 
 triggers:
   - trigger: numeric_state
